@@ -525,6 +525,43 @@ namespace NinjaTrader.NinjaScript.Strategies
 								Print(string.Format("    {0}: {1}", kvp.Key, kvp.Value));
 							}
 
+							// NEW: Inspect first 10 HorizontalLine objects to find price levels
+							Print(string.Format("{0}: *** INSPECTING HORIZONTAL LINES FOR PRICE LEVELS ***", Time[0]));
+							int hLineCount = 0;
+							foreach (var drawObject in ChartControl.ChartObjects.ToList())
+							{
+								if (drawObject != null && drawObject is NinjaTrader.NinjaScript.DrawingTools.HorizontalLine)
+								{
+									hLineCount++;
+									if (hLineCount <= 10)
+									{
+										var hLine = drawObject as NinjaTrader.NinjaScript.DrawingTools.HorizontalLine;
+										double price = hLine.StartAnchor.Price;
+										string tag = hLine.Tag ?? "NO_TAG";
+
+										Print(string.Format("  HLine #{0}: Price={1:F2}, Tag='{2}'", hLineCount, price, tag));
+
+										// Try to find nearby text objects within 5 ticks
+										double proximityInPrice = 5 * TickSize;
+										foreach (var textObj in ChartControl.ChartObjects.ToList())
+										{
+											if (textObj != null && textObj is NinjaTrader.NinjaScript.DrawingTools.Text)
+											{
+												var text = textObj as NinjaTrader.NinjaScript.DrawingTools.Text;
+												double textPrice = text.Anchor.Price;
+
+												if (Math.Abs(textPrice - price) <= proximityInPrice)
+												{
+													string displayText = text.DisplayText ?? text.Tag ?? "";
+													Print(string.Format("    -> Found nearby text at {0:F2}: '{1}'", textPrice, displayText));
+												}
+											}
+										}
+									}
+								}
+							}
+							Print(string.Format("  Total HorizontalLines found: {0}", hLineCount));
+
 							// First pass: collect text descriptions from ChartObjects
 							Dictionary<double, string> chartTextDescriptions = new Dictionary<double, string>();
 							int chartDebugCount = 0;
