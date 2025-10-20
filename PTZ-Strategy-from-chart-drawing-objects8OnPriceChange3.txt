@@ -776,6 +776,9 @@ namespace NinjaTrader.NinjaScript.Strategies
 					double levelPrice = level.Key;
 					string description = level.Value.ToLower();
 
+					// Check if price is near this level (for diagnostic purposes)
+					bool nearLevel = Math.Abs(currentPrice - levelPrice) <= proximity * 5;
+
 					// Apply LBL filter if enabled
 					if (UseLBLFilter)
 					{
@@ -784,22 +787,50 @@ namespace NinjaTrader.NinjaScript.Strategies
 						// If RequireLBLInDescription is true, only trade levels WITH "LBL"
 						// If RequireLBLInDescription is false, only trade levels WITHOUT "LBL"
 						if (RequireLBLInDescription && !hasLBL)
+						{
+							if (nearLevel)
+								Print(string.Format("{0}: Skipping level {1:F2} '{2}' - LBL filter: requires LBL but not found", Time[0], levelPrice, description));
 							continue;
+						}
 						if (!RequireLBLInDescription && hasLBL)
+						{
+							if (nearLevel)
+								Print(string.Format("{0}: Skipping level {1:F2} '{2}' - LBL filter: excludes LBL and found", Time[0], levelPrice, description));
 							continue;
+						}
 					}
 
 					bool isBuyLevel = false;
+					string matchedKeyword = "";
 
 					if (UseSupport && description.Contains(KeywordSupport.ToLower()))
+					{
 						isBuyLevel = true;
+						matchedKeyword = "Support";
+					}
 					if (UsePivotBull && description.Contains(KeywordPivotBull.ToLower()))
+					{
 						isBuyLevel = true;
+						matchedKeyword = "PivotBull";
+					}
 					if (UseStrengthConfirmed && description.Contains(KeywordStrengthConfirmed.ToLower()))
+					{
 						isBuyLevel = true;
+						matchedKeyword = "StrengthConfirmed";
+					}
+
+					// Diagnostic: Print why we're not trading near levels
+					if (nearLevel && !isBuyLevel)
+					{
+						Print(string.Format("{0}: Level {1:F2} '{2}' - Not a BUY level (checking: Support={3}, PivotBull={4})",
+							Time[0], levelPrice, description, UseSupport, UsePivotBull));
+					}
 
 					if (isBuyLevel)
 					{
+						if (nearLevel)
+							Print(string.Format("{0}: Found BUY level {1:F2} '{2}' matched keyword '{3}'", Time[0], levelPrice, description, matchedKeyword));
+
 						// Check if we have cross tracking info for this level
 						if (levelCrossTracker.ContainsKey(levelPrice))
 						{
