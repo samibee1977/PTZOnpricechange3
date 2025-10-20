@@ -290,45 +290,76 @@ namespace NinjaTrader.NinjaScript.Strategies
 						Print(string.Format("    {0}: {1}", kvp.Key, kvp.Value));
 					}
 
-					// NEW: Inspect first 10 HorizontalLine objects from DrawObjects
-					Print(string.Format("{0}: *** INSPECTING HORIZONTAL LINES FROM DRAWOBJECTS ***", Time[0]));
+					// NEW: Inspect ALL objects that have "HorizontalLine" in their type name
+					Print(string.Format("{0}: *** INSPECTING ALL OBJECTS WITH 'HorizontalLine' IN TYPE NAME ***", Time[0]));
 					int hLineCount = 0;
+					int inspectCount = 0;
 					foreach (var drawObject in DrawObjects)
 					{
-						if (drawObject != null && drawObject is NinjaTrader.NinjaScript.DrawingTools.HorizontalLine)
+						if (drawObject != null)
 						{
-							hLineCount++;
-							if (hLineCount <= 10)
+							string typeName = drawObject.GetType().Name;
+							string fullTypeName = drawObject.GetType().FullName;
+
+							// Check if this is a HorizontalLine
+							if (typeName.Contains("HorizontalLine") || fullTypeName.Contains("HorizontalLine"))
 							{
-								var hLine = drawObject as NinjaTrader.NinjaScript.DrawingTools.HorizontalLine;
-								double price = hLine.StartAnchor.Price;
-								string tag = hLine.Tag ?? "NO_TAG";
+								hLineCount++;
 
-								Print(string.Format("  HLine #{0}: Price={1:F2}, Tag='{2}'", hLineCount, price, tag));
+								if (inspectCount < 10)
+								{
+									Print(string.Format("  Object #{0}:", inspectCount + 1));
+									Print(string.Format("    Type: {0}", typeName));
+									Print(string.Format("    FullType: {0}", fullTypeName));
 
-								// Check if we have a matching text description
-								double roundedPrice = Math.Round(price / TickSize) * TickSize;
-								if (textDescriptionsByPrice.ContainsKey(roundedPrice))
-								{
-									Print(string.Format("    -> Matched Text: '{0}'", textDescriptionsByPrice[roundedPrice]));
-								}
-								else
-								{
-									// Try within 5 ticks
-									double proximityInPrice = 5 * TickSize;
-									foreach (var kvp in textDescriptionsByPrice)
+									// Try to access common properties via reflection
+									try
 									{
-										if (Math.Abs(kvp.Key - roundedPrice) <= proximityInPrice)
+										var objType = drawObject.GetType();
+
+										// Try StartAnchor.Price
+										var startAnchorProp = objType.GetProperty("StartAnchor");
+										if (startAnchorProp != null)
 										{
-											Print(string.Format("    -> Nearby Text at {0:F2}: '{1}'", kvp.Key, kvp.Value));
-											break;
+											var startAnchor = startAnchorProp.GetValue(drawObject);
+											if (startAnchor != null)
+											{
+												var priceProp = startAnchor.GetType().GetProperty("Price");
+												if (priceProp != null)
+												{
+													double price = (double)priceProp.GetValue(startAnchor);
+													Print(string.Format("    Price: {0:F2}", price));
+												}
+											}
+										}
+
+										// Try Tag
+										var tagProp = objType.GetProperty("Tag");
+										if (tagProp != null)
+										{
+											string tag = tagProp.GetValue(drawObject)?.ToString() ?? "NO_TAG";
+											Print(string.Format("    Tag: '{0}'", tag));
+										}
+
+										// Try Name
+										var nameProp = objType.GetProperty("Name");
+										if (nameProp != null)
+										{
+											string name = nameProp.GetValue(drawObject)?.ToString() ?? "";
+											Print(string.Format("    Name: '{0}'", name));
 										}
 									}
+									catch (Exception ex)
+									{
+										Print(string.Format("    Error accessing properties: {0}", ex.Message));
+									}
+
+									inspectCount++;
 								}
 							}
 						}
 					}
-					Print(string.Format("  Total HorizontalLines in DrawObjects: {0}", hLineCount));
+					Print(string.Format("  Total objects with 'HorizontalLine' in name: {0}", hLineCount));
 
 					// Second pass: process lines and rays, matching them with nearby text
 					int debugCount = 0;
