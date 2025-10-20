@@ -361,120 +361,86 @@ namespace NinjaTrader.NinjaScript.Strategies
 					}
 					Print(string.Format("  Total objects with 'HorizontalLine' in name: {0}", hLineCount));
 
-					// Second pass: process lines and rays, matching them with nearby text
-					int debugCount = 0;
+					// Second pass: Extract all HorizontalLine levels with their descriptions from Tags
+					Print(string.Format("{0}: *** EXTRACTING PRICE LEVELS FROM TAGS ***", Time[0]));
+					int levelsExtracted = 0;
 					foreach (var drawObject in DrawObjects)
 					{
 						if (drawObject == null)
 							continue;
 
-						string tag = string.Empty;
-						double priceLevel = 0;
-						string description = string.Empty;
-
-						if (drawObject is NinjaTrader.NinjaScript.DrawingTools.Line)
+						string typeName = drawObject.GetType().Name;
+						if (typeName == "HorizontalLine")
 						{
-							var line = drawObject as NinjaTrader.NinjaScript.DrawingTools.Line;
-							priceLevel = line.StartAnchor.Price;
-							tag = line.Tag ?? string.Empty;
-							description = tag;
-
-							// Debug first few objects
-							if (debugCount < 3)
+							try
 							{
-								Print(string.Format("  DEBUG Line: Price={0:F2}, Tag='{1}', IsLocked={2}", priceLevel, tag, line.IsLocked));
-								debugCount++;
-							}
-						}
-						else if (drawObject is NinjaTrader.NinjaScript.DrawingTools.HorizontalLine)
-						{
-							var hLine = drawObject as NinjaTrader.NinjaScript.DrawingTools.HorizontalLine;
-							priceLevel = hLine.StartAnchor.Price;
-							tag = hLine.Tag ?? string.Empty;
-							description = tag;
+								var objType = drawObject.GetType();
 
-							// Debug first few objects - check all possible properties
-							if (debugCount < 5)
-							{
-								try
+								// Get Price from StartAnchor
+								double priceLevel = 0;
+								var startAnchorProp = objType.GetProperty("StartAnchor");
+								if (startAnchorProp != null)
 								{
-									// Try to get description from various properties
-									string name = "";
-									try { name = hLine.GetType().GetProperty("Name")?.GetValue(hLine)?.ToString() ?? ""; } catch { }
-
-									string attachedTo = "";
-									try { attachedTo = hLine.AttachedTo?.ToString() ?? ""; } catch { }
-
-									Print(string.Format("  DEBUG HorizontalLine #{0}:", debugCount + 1));
-									Print(string.Format("    Price={0:F2}", priceLevel));
-									Print(string.Format("    Tag='{0}'", tag));
-									Print(string.Format("    Name='{0}'", name));
-									Print(string.Format("    AttachedTo='{0}'", attachedTo));
-									Print(string.Format("    IsLocked={0}", hLine.IsLocked));
-									Print(string.Format("    Stroke='{0}'", hLine.Stroke?.Brush?.ToString() ?? "null"));
-								}
-								catch (Exception ex)
-								{
-									Print(string.Format("  DEBUG Error: {0}", ex.Message));
-								}
-								debugCount++;
-							}
-						}
-						else if (drawObject is NinjaTrader.NinjaScript.DrawingTools.Ray)
-						{
-							var ray = drawObject as NinjaTrader.NinjaScript.DrawingTools.Ray;
-							priceLevel = ray.StartAnchor.Price;
-							tag = ray.Tag ?? string.Empty;
-							description = tag;
-
-							// Debug first few objects
-							if (debugCount < 3)
-							{
-								Print(string.Format("  DEBUG Ray: Price={0:F2}, Tag='{1}', IsLocked={2}", priceLevel, tag, ray.IsLocked));
-								debugCount++;
-							}
-						}
-
-						if (priceLevel > 0)
-						{
-							// If no description from tag, look for nearby text within 2 ticks
-							if (string.IsNullOrEmpty(description))
-							{
-								double roundedPrice = Math.Round(priceLevel / TickSize) * TickSize;
-
-								// Try exact match first
-								if (textDescriptionsByPrice.ContainsKey(roundedPrice))
-								{
-									description = textDescriptionsByPrice[roundedPrice];
-								}
-								else
-								{
-									// Try within 2 ticks
-									double proximityInPrice = 2 * TickSize;
-									foreach (var kvp in textDescriptionsByPrice)
+									var startAnchor = startAnchorProp.GetValue(drawObject);
+									if (startAnchor != null)
 									{
-										if (Math.Abs(kvp.Key - roundedPrice) <= proximityInPrice)
+										var priceProp = startAnchor.GetType().GetProperty("Price");
+										if (priceProp != null)
 										{
-											description = kvp.Value;
-											break;
+											priceLevel = (double)priceProp.GetValue(startAnchor);
+										}
+									}
+								}
+
+								// Get Tag
+								string tag = string.Empty;
+								var tagProp = objType.GetProperty("Tag");
+								if (tagProp != null)
+								{
+									tag = tagProp.GetValue(drawObject)?.ToString() ?? string.Empty;
+								}
+
+								if (priceLevel > 0 && !string.IsNullOrEmpty(tag))
+								{
+									// Parse the tag to extract description
+									// Format: "LBL=Support: 24633|PTZDPHLine"
+									string description = tag;
+
+									// Remove the |PTZDPHLine suffix
+									if (tag.Contains("|PTZDPHLine"))
+									{
+										description = tag.Replace("|PTZDPHLine", "").Trim();
+									}
+
+									// Remove the LBL= prefix
+									if (description.StartsWith("LBL="))
+									{
+										description = description.Substring(4).Trim();
+									}
+
+									lock (priceLevels)
+									{
+										if (!priceLevels.ContainsKey(priceLevel))
+										{
+											priceLevels[priceLevel] = description;
+											levelsExtracted++;
+
+											// Print first 10 for debugging
+											if (levelsExtracted <= 10)
+											{
+												Print(string.Format("  Level {0}: {1:F2} - {2}", levelsExtracted, priceLevel, description));
+											}
 										}
 									}
 								}
 							}
-
-							if (!string.IsNullOrEmpty(description))
+							catch (Exception ex)
 							{
-								lock (priceLevels)
-								{
-									if (!priceLevels.ContainsKey(priceLevel))
-									{
-										priceLevels[priceLevel] = description;
-										Print(string.Format("  Added from DrawObjects: {0:F2} - {1}", priceLevel, description));
-									}
-								}
+								Print(string.Format("  Error extracting level: {0}", ex.Message));
 							}
 						}
 					}
+					Print(string.Format("  Total levels extracted: {0}", levelsExtracted));
 				}
 
 				// Also scan ChartControl.ChartObjects for manually drawn objects
