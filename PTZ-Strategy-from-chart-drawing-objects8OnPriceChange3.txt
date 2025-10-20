@@ -290,6 +290,46 @@ namespace NinjaTrader.NinjaScript.Strategies
 						Print(string.Format("    {0}: {1}", kvp.Key, kvp.Value));
 					}
 
+					// NEW: Inspect first 10 HorizontalLine objects from DrawObjects
+					Print(string.Format("{0}: *** INSPECTING HORIZONTAL LINES FROM DRAWOBJECTS ***", Time[0]));
+					int hLineCount = 0;
+					foreach (var drawObject in DrawObjects)
+					{
+						if (drawObject != null && drawObject is NinjaTrader.NinjaScript.DrawingTools.HorizontalLine)
+						{
+							hLineCount++;
+							if (hLineCount <= 10)
+							{
+								var hLine = drawObject as NinjaTrader.NinjaScript.DrawingTools.HorizontalLine;
+								double price = hLine.StartAnchor.Price;
+								string tag = hLine.Tag ?? "NO_TAG";
+
+								Print(string.Format("  HLine #{0}: Price={1:F2}, Tag='{2}'", hLineCount, price, tag));
+
+								// Check if we have a matching text description
+								double roundedPrice = Math.Round(price / TickSize) * TickSize;
+								if (textDescriptionsByPrice.ContainsKey(roundedPrice))
+								{
+									Print(string.Format("    -> Matched Text: '{0}'", textDescriptionsByPrice[roundedPrice]));
+								}
+								else
+								{
+									// Try within 5 ticks
+									double proximityInPrice = 5 * TickSize;
+									foreach (var kvp in textDescriptionsByPrice)
+									{
+										if (Math.Abs(kvp.Key - roundedPrice) <= proximityInPrice)
+										{
+											Print(string.Format("    -> Nearby Text at {0:F2}: '{1}'", kvp.Key, kvp.Value));
+											break;
+										}
+									}
+								}
+							}
+						}
+					}
+					Print(string.Format("  Total HorizontalLines in DrawObjects: {0}", hLineCount));
+
 					// Second pass: process lines and rays, matching them with nearby text
 					int debugCount = 0;
 					foreach (var drawObject in DrawObjects)
